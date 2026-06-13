@@ -21,41 +21,34 @@ _MONTH_TO_SEASON = {
 
 
 def lookup_plant(plant_name: str) -> dict:
-    """
-    Search the plant database for a plant by name and return its care information.
 
-    TODO — Milestone 1:
+    target = plant_name.strip().lower()
 
-    Right now this always returns a "not found" response. Your job is to implement
-    the search logic so it can actually find plants.
+    target_key = target.replace(" ","_")
+    if target_key in _plant_db:
+        return {"found": True, "plant": _plant_db[target_key]}
+    
+    for key, data in _plant_db.items():
+        if target == data.get("display_name", "").lower():
+            return {"found": True, "plant": data}
 
-    The plant database (_plant_db) is a dict where keys are lowercase slugs like
-    "pothos", "snake_plant", "fiddle_leaf_fig". Each plant also has a "display_name"
-    field and an "aliases" list with common alternate names.
+        if target == data.get("scientific_name", "").lower():
+            return {"found": True, "plant": data}
 
-    Your implementation should handle all three:
-      1. Direct key match (e.g., "pothos" → finds "pothos")
-      2. Display name match (e.g., "Pothos" → finds "pothos")
-      3. Alias match (e.g., "devil's ivy" → finds "pothos")
+        for item in data.get("aliases", []):
+            if target == item.lower():
+                return {"found": True, "plant": data}
 
-    All matching should be case-insensitive. Strip whitespace from the input.
-
-    Return format when found:
-      {"found": True, "plant": <the full plant dict>}
-
-    Return format when not found:
-      {"found": False, "name": <original input>, "message": <helpful string>}
-
-    The message in the not-found case matters — the agent will use it to decide
-    what to tell the user. Your spec has a dedicated field for this — think about
-    what information would actually be helpful to the agent.
-
-    Before writing code, complete the lookup_plant section of specs/tool-functions-spec.md.
-    """
     return {
         "found": False,
         "name": plant_name,
-        "message": "Plant lookup not yet implemented. Complete Milestone 1.",
+        "message": (
+            f"'{plant_name}' is not in the local plant database. Do not invent "
+            f"specific care numbers as if you had real data. Instead, acknowledge "
+            f"it isn't in the database, then offer general guidance based on the "
+            f"plant type if you can infer it, and suggest a reliable source for "
+            f"specific care details."
+        ),
     }
 
 

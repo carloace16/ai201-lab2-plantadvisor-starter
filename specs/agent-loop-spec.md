@@ -9,7 +9,7 @@
 
 Orchestrate a single conversational turn for the Plant Advisor agent. Given a user message and the conversation history, call the LLM with available tools, execute any tool calls the LLM requests, and return the final text response.
 
-This is the core of what makes Plant Advisor an *agent* rather than a simple chatbot: the ability to decide which tools to call, use their results to inform its response, and loop until it has everything it needs.
+This is the core of what makes Plant Advisor an _agent_ rather than a simple chatbot: the ability to decide which tools to call, use their results to inform its response, and loop until it has everything it needs.
 
 ---
 
@@ -17,10 +17,10 @@ This is the core of what makes Plant Advisor an *agent* rather than a simple cha
 
 **Inputs:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `user_message` | `str` | The user's current message |
-| `history` | `list` | Gradio conversation history — list of `[user_msg, assistant_msg]` pairs |
+| Parameter      | Type   | Description                                                             |
+| -------------- | ------ | ----------------------------------------------------------------------- |
+| `user_message` | `str`  | The user's current message                                              |
+| `history`      | `list` | Gradio conversation history — list of `[user_msg, assistant_msg]` pairs |
 
 **Output:** `str`
 
@@ -30,7 +30,7 @@ The agent's final text response for this turn. Should never be empty — if some
 
 ## Design Decisions
 
-*Read `specs/system-design.md` (especially the "How the Groq Tool Calling API Works" section) before reviewing these. Complete the two blank fields before writing any code.*
+_Read `specs/system-design.md` (especially the "How the Groq Tool Calling API Works" section) before reviewing these. Complete the two blank fields before writing any code._
 
 ---
 
@@ -119,35 +119,49 @@ for tool_call in assistant_message.tool_calls:
 
 ### Loop termination conditions
 
-*The loop should stop when: (a) the LLM returns a response with no tool calls, OR (b) the MAX_TOOL_ROUNDS limit is reached. Describe how you will detect each condition and what you will return in each case.*
+_The loop should stop when: (a) the LLM returns a response with no tool calls, OR (b) the MAX_TOOL_ROUNDS limit is reached. Describe how you will detect each condition and what you will return in each case._
 
 ```
-[your answer here]
+The loop runs inside `while rounds < MAX_TOOL_ROUNDS`. Two exits:
+
+(a) No tool calls — after each LLM call I check `assistant_message.tool_calls`.
+    If it's falsy, the LLM has a final answer, so I return
+    `assistant_message.content` and the loop ends.
+
+(b) Round limit reached — if the LLM keeps requesting tools and `rounds` hits
+    MAX_TOOL_ROUNDS, the while condition fails and the loop falls through. I then
+    return a plain-text fallback message asking the user to rephrase, so the agent
+    degrades gracefully instead of crashing or returning an empty string.
 ```
 
 ---
 
 ### Extracting the final text response
 
-*Once the loop exits because there are no more tool calls, how do you extract the text content from the response object? What field holds the string you should return?*
+_Once the loop exits because there are no more tool calls, how do you extract the text content from the response object? What field holds the string you should return?_
 
 ```
-[your answer here]
+The final text is at `response.choices[0].message.content`. `choices` is a list,
+so I index [0] to get the assistant message, then read its `.content` attribute —
+that's the string the LLM generated as its answer. When `tool_calls` is empty I
+return `assistant_message.content`.
 ```
 
 ---
 
 ## Implementation Notes
 
-*Fill this in after implementing and testing.*
+_Fill this in after implementing and testing._
 
 **Trace of a working agent turn (what tools were called and in what order):**
 
 ```
-Query: "How should I care for my calathea?"
-Round 1 tool call: [tool name, args]
-Round 2 tool call: [tool name, args] (if any)
-Final response: [brief description]
+Query: "How should I water my monstera this time of year?"
+Round 1 tool call: lookup_plant({'plant_name': 'monstera'}) → found: true, full Monstera entry
+Round 1 tool call: get_seasonal_conditions({}) → auto-detected Summer
+Final response: Combined the Monstera's watering data (water when top 2 inches dry,
+  ~every 1-2 weeks) with summer guidance (water more often in heat) plus temperature
+  and humidity tips. Both tools fired in the same round; no round 2 needed.
 ```
 
 **What happens when you ask about a plant that isn't in the database?**
@@ -159,5 +173,8 @@ Final response: [brief description]
 **One thing about the tool call API that surprised you:**
 
 ```
-[your answer here]
+Two things: the model can garble its own tool-call format and trigger a 400 error
+unless temperature is set low (temperature=0 fixed it). And a tool call with no
+arguments parses to None, not an empty dict, so `tool_args.get(...)` crashed until
+I defaulted it to {}.
 ```

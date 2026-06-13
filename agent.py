@@ -101,31 +101,62 @@ def dispatch_tool(tool_name: str, tool_args: dict) -> str:
 # ──────────────────────────────────────────────
 
 def run_agent(user_message: str, history: list) -> str:
-    """
-    Run the plant care agent for one user turn and return its response.
+    """Run the plant care agent for one user turn and return its response."""
+    
+    # 1. Build the messages list, starting with the system prompt
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    TODO — Milestone 2:
+    # 2. Add the conversation history (Robust to both old and new Gradio formats)
+    for item in history:
+        # If using New Gradio (list of dictionaries)
+        if isinstance(item, dict):
+            messages.append({"role": item["role"], "content": item["content"]})
+        # If using Old Gradio (list of pairs)
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            user_msg, assistant_msg = item
+            messages.append({"role": "user", "content": user_msg})
+            if assistant_msg:
+                messages.append({"role": "assistant", "content": assistant_msg})
 
-    The agent loop follows a specific pattern that you'll implement here. Read
-    specs/agent-loop-spec.md carefully before writing any code — understand the
-    full loop before implementing any part of it.
+    # 3. Add the new user message
+    messages.append({"role": "user", "content": user_message})
 
-    The loop works like this:
-      1. Build a messages list: system prompt + conversation history + new user message
-      2. Call the LLM with messages and TOOL_DEFINITIONS
-      3. If the response contains tool_calls:
-           a. Append the assistant message (with tool_calls) to messages
-           b. For each tool call: execute via dispatch_tool(), append the result
-           c. Call the LLM again with the updated messages
-           d. Repeat until no more tool_calls (or MAX_TOOL_ROUNDS is reached)
-      4. Return the final text response
+    # 4. The Agent Loop (runs until MAX_TOOL_ROUNDS is hit)
+    rounds = 0
+    while rounds < MAX_TOOL_ROUNDS:
+        response = _client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            tool_choice="auto",
+            temperature=0,
+        )
 
-    Key details to get right:
-      - The assistant message must be appended BEFORE tool results
-      - Tool result messages use role="tool" with a tool_call_id field
-      - Append the assistant's message object directly (not just its content)
-      - The history format from Gradio: list of [user_message, assistant_message] pairs
+        assistant_message = response.choices[0].message
 
-    Before writing code, complete specs/agent-loop-spec.md.
-    """
-    return "🌱 Agent not yet implemented. Complete Milestone 2 to activate the Plant Advisor."
+        # Exit Condition A: If the LLM didn't call any tools, it has its final answer
+        if not assistant_message.tool_calls:
+            return assistant_message.content
+
+        # STRICT API REQUIREMENT: Append the assistant's message BEFORE appending the tool results
+        messages.append(assistant_message)
+
+        # Execute each tool the LLM asked for
+        for tool_call in assistant_message.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments or "{}") or {}
+            
+            # Route to the right function in tools.py
+            tool_result = dispatch_tool(tool_name, tool_args)
+
+            # Append the tool's data back to the messages list
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": tool_result,
+            })
+            
+        rounds += 1
+
+    # Exit Condition B: Loop limit reached
+    return "I needed to look up too many things at once and timed out. Could you try asking your question again?"
